@@ -352,8 +352,8 @@ function lerpColor(a, b, t){
 // ---- 게임 상태 ----
 const BLOB_N = 18;
 function makePoints(n){ const a=[]; for(let i=0;i<n;i++) a.push({off:0, v:0}); return a; }
-const TARGET_FRAC = 0.062;   // 기본(확장 직후) 화면 비율 — 주인공 작고 배경 넓은 줌아웃 느낌
-const MAX_FRAC    = 0.085;   // 확장 발동 비율 — TARGET에 가깝게 둬서 늘 "딱 커지고 바로" 유지
+const TARGET_FRAC = 0.048;   // 기본(확장 직후) 화면 비율 — 더 줌아웃해 답답함 완화(승인 2026-06-17)
+const MAX_FRAC    = 0.066;   // 확장 발동 비율 — POP_RATIO≈1.37 유지(TARGET과 함께 비례 축소)
 const DEATH_FRAC  = 0.018;   // 이보다 작아지면 사망
 const POP_RATIO   = MAX_FRAC / TARGET_FRAC;
 
