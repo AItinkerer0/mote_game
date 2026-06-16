@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VIRUS — 무한 성장</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#04060a; }
+  #game { display:block; width:100vw; height:100vh; touch-action:none; cursor:crosshair; }
+  #ui {
+    position:fixed; inset:0; pointer-events:none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color:#eef6ff; user-select:none;
+  }
+  .hud { position:absolute; top:16px; left:18px; line-height:1.4; text-shadow:0 1px 6px rgba(0,0,0,.6); }
+  .hud .size { font-size:15px; font-weight:600; letter-spacing:.5px; opacity:.3; }
+  .hud .size small { display:none; }
+  .hud .tier { display:none; }
+  .banner { display:none; }
+  .bar-wrap { display:none; position:absolute; top:22px; left:50%; transform:translateX(-50%); width:min(42vw,320px); text-align:center; }
+  .bar-wrap .lbl { font-size:11px; letter-spacing:3px; opacity:.6; margin-bottom:5px; }
+  .bar { height:5px; width:100%; background:rgba(255,255,255,.12); border-radius:3px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0%; border-radius:3px; transition:width .08s linear; }
+  .banner {
+    position:absolute; top:34%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; opacity:0; transition:opacity .25s; pointer-events:none;
+  }
+  .banner .big { font-size:42px; font-weight:800; letter-spacing:2px; text-shadow:0 0 24px currentColor; }
+  .banner .sub { font-size:14px; opacity:.8; letter-spacing:6px; margin-top:6px; }
+  .screen {
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; gap:14px; background:radial-gradient(ellipse at center, rgba(4,8,14,.55), rgba(2,4,7,.92));
+    pointer-events:auto;
+  }
+  .screen.hidden { display:none; }
+  .screen h1 { font-size:96px; font-weight:900; letter-spacing:0; line-height:1; color:#fff; text-shadow:0 0 50px rgba(255,255,255,.65), 0 0 90px rgba(255,255,255,.3); }
+  .screen .tag { font-size:14px; opacity:.8; max-width:520px; line-height:1.9; letter-spacing:1px; }
+  .screen .tag b { color:#ffffff; font-weight:700; }
+  .screen .go { margin-top:10px; font-size:15px; padding:13px 34px; border:1px solid rgba(255,255,255,.45);
+    border-radius:40px; letter-spacing:4px; background:rgba(255,255,255,.07); transition:.2s; cursor:pointer; }
+  .screen .go:hover { background:rgba(255,255,255,.18); transform:scale(1.04); }
+  .screen .stat { font-size:18px; opacity:.95; }
+  .screen .stat b { font-size:30px; color:#ffffff; }
+  .fade { animation:fadein .5s ease both; }
+  @keyframes fadein { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
+
+  /* 우상단 돌아가기 버튼 (게임 환생 / 상점·도감 뒤로 — 통일) */
+  .cornerBtn { position:absolute; top:14px; right:16px; pointer-events:auto;
+    width:42px; height:42px; border-radius:50%; border:1px solid rgba(255,255,255,.3);
+    background:rgba(255,255,255,.06); color:#fff; font-size:20px; cursor:pointer; opacity:.55; transition:.2s; }
+  .cornerBtn:hover { opacity:1; background:rgba(255,255,255,.16); transform:rotate(-90deg); }
+  #prestigeBtn { display:none; }   /* 게임 중에만 표시 */
+
+  /* 메인 — 흰 몽글 공(시작) + ◎ 상점 */
+  .ballBtn { pointer-events:auto; width:124px; height:124px; border:none; cursor:pointer; background:transparent;
+    padding:0; display:flex; align-items:center; justify-content:center;
+    animation:ballPulse 2.4s ease-in-out infinite; transition:transform .2s; }
+  .ballBtn:hover { transform:scale(1.09); }
+  .ballBtn:active { transform:scale(1.15); }   /* 클릭·터치 순간 살짝 더 커짐 */
+  .ballBtn canvas { width:124px; height:124px; pointer-events:none; }
+  @keyframes ballPulse { 0%,100%{ transform:scale(1) } 50%{ transform:scale(1.05) } }
+  .mainMenu { display:flex; gap:18px; align-items:center; }
+  .shopBtn { pointer-events:auto; width:54px; height:54px; border-radius:50%;
+    border:1px solid rgba(255,211,77,.5); background:rgba(255,211,77,.08); color:#ffd34d;
+    font-size:24px; cursor:pointer; transition:.2s; }
+  .shopBtn:hover { background:rgba(255,211,77,.2); transform:scale(1.08); }
+  /* 무지개 스킨 — 게임처럼 은은하게 색이 도는 (conic 띠 X) */
+  .rainbowSkin { animation:hueSpin 5s linear infinite; }
+  @keyframes hueSpin { from{filter:hue-rotate(0deg);} to{filter:hue-rotate(360deg);} }
+
+  /* 상점 */
+  #coins { font-size:22px; font-weight:700; letter-spacing:1px; color:#ffd34d; }
+  .gachaBall { pointer-events:auto; width:104px; height:104px; border-radius:50%; cursor:pointer; position:relative;
+    background:radial-gradient(circle at 36% 30%, rgba(255,255,255,.92) 0%, rgba(200,220,245,.3) 46%, rgba(50,65,90,.55) 100%);
+    border:2px solid rgba(255,255,255,.35); box-shadow:0 0 26px rgba(190,215,255,.35), inset 0 -10px 22px rgba(80,100,130,.35), inset 0 8px 18px rgba(255,255,255,.5);
+    transition:transform .12s; overflow:visible; }
+  /* 캡슐 안 물감 소용돌이 */
+  .gachaBall .paint { position:absolute; inset:5px; border-radius:50%; overflow:hidden; opacity:0; pointer-events:none;
+    transition:opacity .35s; filter:blur(5px);
+    background:
+      radial-gradient(circle at 28% 30%, #ff5fae 0%, transparent 42%),
+      radial-gradient(circle at 72% 32%, #5ec8ff 0%, transparent 42%),
+      radial-gradient(circle at 35% 72%, #b6f06a 0%, transparent 42%),
+      radial-gradient(circle at 68% 68%, #ffd34d 0%, transparent 42%),
+      radial-gradient(circle at 50% 50%, #a878ff 0%, transparent 50%); }
+  .gachaBall.mixing .paint { opacity:.95; animation:swirl .8s linear infinite; }
+  @keyframes swirl { from{transform:rotate(0) scale(1.08);} to{transform:rotate(360deg) scale(1.08);} }
+  /* 결과 공이 캡슐에서 스르륵 나옴 */
+  .gachaBall .outBall { position:absolute; left:50%; bottom:10px; width:30px; height:30px; border-radius:50%;
+    transform:translate(-50%,0) scale(0); opacity:0; box-shadow:0 0 14px currentColor;
+    transition:transform .55s cubic-bezier(.2,1.5,.4,1), opacity .3s; pointer-events:none; }
+  .gachaBall.popped .outBall { transform:translate(-50%,42px) scale(1); opacity:1; }
+  .gachaBall:hover { transform:scale(1.05); }
+  .gachaBall:active { transform:scale(0.92); }
+  .gachaBall .gleam { position:absolute; top:14px; left:20px; width:26px; height:18px; border-radius:50%;
+    background:rgba(255,255,255,.8); filter:blur(2px); }
+  .gachaCost { font-size:13px; letter-spacing:1px; color:#ffd34d; opacity:.85; margin-top:-4px; }
+  #gachaResult { min-height:24px; display:flex; align-items:center; gap:8px; font-size:14px; letter-spacing:1px; }
+  #gachaResult .dot { width:16px; height:16px; border-radius:50%; box-shadow:0 0 10px currentColor; }
+  #gachaResult .rr { font-weight:700; }
+  .dexBtn { pointer-events:auto; width:48px; height:48px; border-radius:50%; cursor:pointer;
+    border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.05); color:#fff; font-size:22px; font-weight:700; transition:.2s; }
+  .dexBtn:hover { background:rgba(255,255,255,.16); transform:scale(1.08); }
+
+  /* 도감 */
+  #skinGrid { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; max-width:340px; }
+  #skinGrid .skin { width:30px; height:30px; border-radius:50%; cursor:pointer; transition:.15s;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 0 8px rgba(255,255,255,.25); border:2px solid transparent; }
+  #skinGrid .skin:hover { transform:scale(1.15); }
+  #skinGrid .skin.locked { background:#16181c !important; color:#4a4d55; font-size:14px; box-shadow:none; cursor:default; }
+  #skinGrid .skin.eq { border-color:#fff; box-shadow:0 0 12px rgba(255,255,255,.7); }
+  .dexPreview { margin-top:10px; border-radius:12px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); }
+  .dexTargetSel { display:flex; gap:24px; align-items:center; }
+  .targetBtn { pointer-events:auto; padding:16px; border-radius:50%; cursor:pointer; transition:.2s;
+    border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.05);
+    display:inline-flex; align-items:center; justify-content:center; }
+  .targetBtn:hover { background:rgba(255,255,255,.14); transform:scale(1.08); }
+  #dexItems { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  #dexItems.hidden { display:none; }
+  #dexTargets.hidden { display:none; }
+
+  .pullRow { display:flex; gap:16px; }
+  .pull { pointer-events:auto; padding:11px; border-radius:50%; cursor:pointer; transition:.2s;
+    border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.06);
+    display:inline-flex; align-items:center; justify-content:center; }
+  .pull:hover { background:rgba(255,255,255,.16); transform:scale(1.08); }
+  .dexTabs { display:flex; gap:12px; }
+  .dtab { pointer-events:auto; padding:8px; border-radius:50%; cursor:pointer; transition:.2s;
+    border:1px solid rgba(255,255,255,.2); background:transparent;
+    display:inline-flex; align-items:center; justify-content:center; }
+  .dtab.on { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.45); }
+  /* 글씨 대신 아이콘 (몽환) */
+  .ic-color { width:22px; height:22px; border-radius:50%; filter:saturate(.7);
+    background:conic-gradient(from 0deg,#ff6b9d,#ffd34d,#7dff9f,#5ec8ff,#a878ff,#ff6b9d); }
+  .ic-shape { display:inline-flex; width:22px; height:22px; }
+  .ic-shape svg { width:22px; height:22px; }
+  .ic-big { width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 0 8px rgba(255,255,255,.4); }
+  .ic-small { width:12px; height:12px; border-radius:50%; background:#fff; box-shadow:0 0 6px rgba(255,255,255,.35); }
+  .ic-bg { width:22px; height:22px; border-radius:6px; background:radial-gradient(circle at 30% 30%, #2a2c44, #07080f);
+    box-shadow:inset 0 0 4px rgba(255,255,255,.15); position:relative; }
+  .ic-bg::after { content:''; position:absolute; top:5px; left:6px; width:2px; height:2px; border-radius:50%;
+    background:#fff; box-shadow:8px 3px 0 -0.3px #fff, 4px 10px 0 -0.5px #fff, 12px 11px 0 -0.6px #fff; }
+
+  /* AUTO-PLAY BOT 표시 (임시) */
+  #botTag { position:absolute; top:16px; left:50%; transform:translateX(-50%); display:none;
+    font-size:11px; letter-spacing:2px; color:#5dff3a; opacity:.75; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div class="hud">
+    <div class="size" id="sizeVal">12<small> 크기</small></div>
+    <div class="tier" id="tierVal">SCALE 0</div>
+  </div>
+  <div class="bar-wrap">
+    <div class="lbl">다음 확장까지</div>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+  <div class="banner" id="banner"><div class="big" id="bannerBig"></div><div class="sub" id="bannerSub"></div></div>
+
+  <button id="prestigeBtn" class="cornerBtn" title="환생 — 크기를 코인으로 (Enter)">↻</button>
+  <div id="botTag">● AUTO · B로 끄기</div>
+
+  <div class="screen" id="startScreen">
+    <button id="startBtn" class="ballBtn" title="시작"><canvas id="startBallCv" width="240" height="240"></canvas></button>
+    <div class="mainMenu">
+      <button id="shopBtn" class="shopBtn" title="상점">◎</button>
+      <button id="dexBtn" class="dexBtn" title="도감">?</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="shopScreen">
+    <button id="shopBackBtn" class="cornerBtn" title="메인으로">↻</button>
+    <div id="coins">◎ 0</div>
+    <div class="dexTabs">
+      <button id="stPlayer" class="dtab on" title="주인공"><span class="ic-big"></span></button>
+      <button id="stFood" class="dtab" title="쪼꼬미"><span class="ic-small"></span></button>
+      <button id="stBg" class="dtab" title="배경"><span class="ic-bg"></span></button>
+    </div>
+    <button id="gachaBtn" class="gachaBall" title="뽑기"><span class="paint"></span><span class="gleam"></span><span class="outBall"></span></button>
+    <div class="gachaCost">◎ 10</div>
+    <div class="pullRow">
+      <button id="pullColor" class="pull" title="색 뽑기"><span class="ic-color"></span></button>
+      <button id="pullShape" class="pull" title="모양 뽑기"><span class="ic-shape"><svg viewBox="0 0 24 24"><path d="M12 2 L14.6 9 L22 9.2 L16 13.8 L18.2 21 L12 16.6 L5.8 21 L8 13.8 L2 9.2 L9.4 9 Z" fill="#fff"/></svg></span></button>
+    </div>
+    <div id="gachaResult"></div>
+  </div>
+
+  <div class="screen hidden" id="dexScreen">
+    <button id="dexBackBtn" class="cornerBtn" title="뒤로">↻</button>
+    <div id="dexTargets" class="dexTargetSel">
+      <button id="dtPlayer" class="targetBtn" title="주인공"><span class="ic-big"></span></button>
+      <button id="dtFood" class="targetBtn" title="쪼꼬미"><span class="ic-small"></span></button>
+      <button id="dtBg" class="targetBtn" title="배경"><span class="ic-bg"></span></button>
+    </div>
+    <div id="dexItems" class="hidden">
+      <div class="dexTabs" id="dexSubTabs">
+        <button id="tabColor" class="dtab on" title="색"><span class="ic-color"></span></button>
+        <button id="tabShape" class="dtab" title="모양"><span class="ic-shape"><svg viewBox="0 0 24 24"><path d="M12 2 L14.6 9 L22 9.2 L16 13.8 L18.2 21 L12 16.6 L5.8 21 L8 13.8 L2 9.2 L9.4 9 Z" fill="#fff"/></svg></span></button>
+      </div>
+      <div id="skinGrid"></div>
+      <canvas id="dexPreview" width="300" height="190" class="dexPreview"></canvas>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <h1 style="font-size:60px; color:#3a3a3e; text-shadow:none">●</h1>
+    <div class="stat"><b id="finalSize">0</b></div>
+    <div class="stat" id="finalTier" style="display:none"></div>
+    <div class="go" id="restartBtn">다시 시작</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const canvas = document.getElementById('game');
+let ctx = canvas.getContext('2d');   // 도감 미리보기에서 잠깐 다른 캔버스로 스왑
+
+let W = 0, H = 0, DPR = 1, SMIN = 0;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight; SMIN = Math.min(W, H);
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- 팔레트: tier마다 순환하며 신선함을 준다 ----
+// 컨셉이 없는 게 컨셉 — 검정 배경에 하얀 몽글 공. 무채색 단일 테마.
+const PALETTES = [
+  { name:'', bg:['#101012','#000000'], food:'#ffffff', player:'#ffffff', spike:'#ffffff', nucleus:'#2f323a', enemy:'#f0f3f8', danger:'#565b66' },
+];
+function pal(t){ return PALETTES[((t % PALETTES.length) + PALETTES.length) % PALETTES.length]; }
+
+// ---- 스킨 / 메타 진행 (가챠) ----
+const SKINS = [
+  { id:'white',   rarity:'base',   color:'#ffffff' },   // 기본(항상 보유)
+  { id:'ash',     rarity:'common', color:'#c8ccd2' },
+  { id:'teal',    rarity:'common', color:'#3fe0c8' },
+  { id:'sky',     rarity:'common', color:'#5ec8ff' },
+  { id:'lime',    rarity:'common', color:'#b6f06a' },
+  { id:'sand',    rarity:'common', color:'#e8d6a0' },
+  { id:'violet',  rarity:'rare',   color:'#a878ff' },
+  { id:'rose',    rarity:'rare',   color:'#ff79b0' },
+  { id:'amber',   rarity:'rare',   color:'#ffb43a' },
+  { id:'aqua',    rarity:'rare',   color:'#2effe0' },
+  { id:'crimson', rarity:'rare',   color:'#ff5566' },
+  { id:'neon',    rarity:'epic',   color:'#5dff3a' },
+  { id:'gold',    rarity:'epic',   color:'#ffd34d' },
+  { id:'rainbow', rarity:'epic',   color:'rainbow' },
+  { id:'obsidian',rarity:'epic',   color:'#0b0b12' },   // 되게 진한 검정(빛 글로우로만 보임)
+];
+const RARITY = {
+  base:   { label:'기본', col:'#ffffff' },
+  common: { label:'일반', col:'#cfd6df', w:70 },
+  rare:   { label:'레어', col:'#7db4ff', w:25 },
+  epic:   { label:'에픽', col:'#ffcf4d', w:5 },
+};
+// 모양 풀 (색과 별개로 뽑고 장착) — round=기본. 나머지는 하나씩 다듬어 추가 예정
+const SHAPES = [
+  { id:'round',     rarity:'base' },
+  { id:'blackhole', rarity:'epic' },   // 블랙홀
+  { id:'comet',     rarity:'epic' },   // 별똥별(큰 머리+매끄러운 꼬리, 공전)
+  { id:'ring',      rarity:'epic' },   // 고리(토성)
+  { id:'pulse',     rarity:'epic' },   // 음파
+  { id:'swarm',     rarity:'epic' },   // 위성무리
+];
+// 쪼꼬미(먹이) 형태 — 작으니 단순 실루엣만
+const FOOD_SHAPES = [
+  { id:'round',  rarity:'base' },
+  { id:'star',   rarity:'rare' },
+  { id:'tri',    rarity:'rare' },
+  { id:'diamond',rarity:'rare' },
+  { id:'spore',  rarity:'epic' },
+  { id:'cross',  rarity:'epic' },
+];
+// 배경 — 색/모양 없이 분위기 통째 (몽환·신비)
+const BGS = [
+  { id:'void',     rarity:'base' },   // 기본: 순수 검정(컨셉)
+  { id:'deep',     rarity:'rare' },   // 별밭(성간 먼지+층진 별) — 스킨
+  { id:'cosmos',   rarity:'epic' },   // 우주 성운(파랑/핑크)
+  { id:'amethyst', rarity:'epic' },   // 보라 성운
+  { id:'nebula',   rarity:'rare' },   // 성운
+  { id:'abyss',    rarity:'rare' },   // 심해
+  { id:'mist',     rarity:'rare' },   // 연무
+  { id:'aurora',   rarity:'epic' },   // 오로라
+  { id:'particle', rarity:'epic' },   // 입자장
+];
+const GACHA_COST = 10;
+
+const SAVE_DEF = { coins:0,
+  pColors:['white'], pShapes:['round'], pColor:'white', pShape:'round',
+  fColors:['white'], fShapes:['round'], fColor:'white', fShape:'round',
+  bgs:['void'], bg:'void' };
+function loadSave(){
+  try{
+    const s = JSON.parse(localStorage.getItem('virusgame_save'));
+    if (s && typeof s.coins === 'number'){
+      const base = Array.isArray(s.pColors) ? s   // 신형식
+        : { coins:s.coins, pColors:(s.owned&&s.owned.length)?s.owned:['white'], pShapes:['round'], pColor:s.equipped||'white', pShape:'round' };
+      return Object.assign({}, SAVE_DEF, base);    // 누락 키(f*)는 기본값으로 채움
+    }
+  }catch(e){}
+  return Object.assign({}, SAVE_DEF);
+}
+function saveGame(){ try{ localStorage.setItem('virusgame_save', JSON.stringify(SAVE)); }catch(e){} }
+function colorById(id){ return SKINS.find(s=>s.id===id) || SKINS[0]; }
+function tintOf(id){ const sk=colorById(id); return sk.color==='rainbow'?`hsl(${(S.time*40)%360},90%,72%)`:sk.color; }
+function skinColor(){ return tintOf(SAVE.pColor); }      // 주인공 색
+// 검정(obsidian)은 색=글로우라 안 보임 → 밝은 빛 헤일로로 윤곽이 드러나게
+function skinGlow(){ return SAVE.pColor==='obsidian' ? '#aebbe0' : skinColor(); }
+function isObsidian(){ return SAVE.pColor==='obsidian'; }
+function lightenCol(c,f){   // hex/hsl → f만큼 밝게(rgb). 어두운 스킨서도 보이는 옅은 선·잔상용
+  if(c && c[0]==='#'){ let h=c.slice(1); if(h.length===3)h=h.split('').map(x=>x+x).join('');
+    const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+    return `rgb(${Math.round(r+(255-r)*f)},${Math.round(g+(255-g)*f)},${Math.round(b+(255-b)*f)})`; }
+  return c;
+}
+function colRGBA(c,lift,a){   // hex/hsl → 밝기 lift% 올린 rgba(a). 반투명 그라데이션 스톱용
+  if(c && c[0]==='#'){ let h=c.slice(1); if(h.length===3)h=h.split('').map(x=>x+x).join('');
+    let r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+    const f=(lift||0)/100; r+=(255-r)*f; g+=(255-g)*f; b+=(255-b)*f;
+    return `rgba(${r|0},${g|0},${b|0},${a})`; }
+  if(c && c.indexOf('hsl')===0) return c.replace('hsl(','hsla(').replace(')',`,${a})`);
+  return c;
+}
+function playerShape(){ return SAVE.pShape || 'round'; }
+function foodColorHex(){ return tintOf(SAVE.fColor); }   // 쪼꼬미 색
+function foodShape(){ return SAVE.fShape || 'round'; }
+let SAVE = loadSave();
+if(!SHAPES.some(s=>s.id===SAVE.pShape)) SAVE.pShape='round';   // 제거된 스킨(예: fog) 장착 상태면 기본으로 복구
+if(!SKINS.some(s=>s.id===SAVE.pColor)) SAVE.pColor='white';    // 제거된 색(예: blood/navy/indigo) 장착 시 복구
+if(!SKINS.some(s=>s.id===SAVE.fColor)) SAVE.fColor='white';
+let CASH = null;   // 정산(cashout) 애니메이션 상태
+let BOT = false;   // === AUTO-PLAY BOT (임시 테스트용 — 나중에 제거) ===
+
+function hex2rgb(h){ const n = parseInt(h.slice(1),16); return [n>>16&255, n>>8&255, n&255]; }
+function lerpColor(a, b, t){
+  const ca = hex2rgb(a), cb = hex2rgb(b);
+  const r = Math.round(ca[0]+(cb[0]-ca[0])*t);
+  const g = Math.round(ca[1]+(cb[1]-ca[1])*t);
+  const bl= Math.round(ca[2]+(cb[2]-ca[2])*t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+// ---- 게임 상태 ----
+const BLOB_N = 18;
+function makePoints(n){ const a=[]; for(let i=0;i<n;i++) a.push({off:0, v:0}); return a; }
+const TARGET_FRAC = 0.062;   // 기본(확장 직후) 화면 비율 — 주인공 작고 배경 넓은 줌아웃 느낌
+const MAX_FRAC    = 0.085;   // 확장 발동 비율 — TARGET에 가깝게 둬서 늘 "딱 커지고 바로" 유지
+const DEATH_FRAC  = 0.018;   // 이보다 작아지면 사망
+const POP_RATIO   = MAX_FRAC / TARGET_FRAC;
+
+let S; // state
+function newState(){
+  return {
+    player:{ x:0, y:0, vx:0, vy:0, r:12, tr:12, ax:0, ay:0, hitFlash:0, hitCd:0, points: makePoints(BLOB_N) },
+    foods:[], enemies:[], parts:[], absorbs:[], specks:[],
+    zoom: SMIN*TARGET_FRAC/12,
+    zoomTarget: SMIN*TARGET_FRAC/12,
+    popping:false,
+    tier:0,
+    spin:0,
+    mouse:{ x:0, y:0, active:false },
+    keys:{},
+    started:false, over:false,
+    paletteMix:1, prevTier:0,
+    banner:{ t:0, big:'', sub:'' },
+    flash:0,
+    time:0,
+  };
+}
+S = newState();
+
+function worldToScreen(wx, wy){
+  return [ W/2 + (wx - S.player.x)*S.zoom, H/2 + (wy - S.player.y)*S.zoom ];
+}
+const screenR = () => S.player.r * S.zoom;
+
+// 시야 반경(월드 단위) — 화면 대각선 절반 + 여유
+function viewWorldR(){ return (Math.hypot(W,H)/2)/S.zoom * 1.25; }
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+function spawnAround(minFrac, maxFrac){
+  const ang = rand(0, Math.PI*2);
+  const d = rand(viewWorldR()*minFrac, viewWorldR()*maxFrac);
+  return [ S.player.x + Math.cos(ang)*d, S.player.y + Math.sin(ang)*d ];
+}
+
+function maintainWorld(){
+  const vr = viewWorldR();
+  const p = S.player;
+  // 화면 밖으로 멀어진 것 제거
+  const cull = (e)=> Math.hypot(e.x-p.x, e.y-p.y) < vr*1.6;
+  S.foods = S.foods.filter(cull);
+  S.enemies = S.enemies.filter(cull);
+  S.specks = S.specks.filter(cull);
+  // 음식 보충 (플레이어 크기에 비례)
+  while (S.foods.length < 70){
+    const [x,y] = spawnAround(0.15, 1.15);
+    S.foods.push({ x, y, r: p.r * rand(0.06, 0.14), ph: rand(0,6.28) });
+  }
+  // 면역세포 보충 (적게·멀리·위협 비율 낮게)
+  while (S.enemies.length < 4){
+    const [x,y] = spawnAround(0.95, 1.5);
+    // 대부분 작게(먹이), 일부만 크게(위협)
+    const big = Math.random() < 0.32;
+    const r = big ? p.r * rand(1.1, 1.7) : p.r * rand(0.35, 0.8);
+    S.enemies.push({ x, y, r, vx:0, vy:0, ph:rand(0,6.28), wob:rand(0.5,1.5),
+                     wanderA: rand(0,6.28) });
+  }
+  // 배경 부유물
+  while (S.specks.length < 40){
+    const [x,y] = spawnAround(0.1, 1.3);
+    S.specks.push({ x, y, r: p.r*rand(0.01,0.04), a:rand(0.05,0.2) });
+  }
+}
+
+function startGame(){
+  S = newState();
+  S.started = true;
+  S.mouse.x = W/2; S.mouse.y = H/2;
+  maintainWorld();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('shopScreen').classList.add('hidden');
+  document.getElementById('dexScreen').classList.add('hidden');
+  document.getElementById('overScreen').classList.add('hidden');
+  document.getElementById('prestigeBtn').style.display = 'block';
+}
+function gameOver(){
+  if (CASH) return;
+  startCashout();   // 죽어도 정산 애니메이션으로 코인 지급
+}
+
+// ---- 환생(판매) + 정산 애니메이션 ----
+function prestige(){
+  if (!S.started || S.over || CASH) return;
+  startCashout();
+}
+// 종료 시 흰 공이 tier 횟수만큼 단계적으로 줄며 매 단계 코인을 토해내고 사라진다
+function startCashout(){
+  const tier = S.tier;
+  SAVE.coins += tier; saveGame();                       // 코인 적립(즉시·안전)
+  S.started = false; S.over = false;
+  document.getElementById('prestigeBtn').style.display = 'none';
+  CASH = { tier, i:0, maxR:SMIN*0.18, t:0, dur:Math.max(0.07, Math.min(0.26, 1.0/Math.max(1,tier))),
+           dispR:SMIN*0.18, displayCoins:SAVE.coins - tier, parts:[] };
+}
+function easeInOut(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+function updateCashout(dt){
+  const C=CASH, tierEff=Math.max(1, C.tier);
+  for(let j=C.parts.length-1;j>=0;j--){ const p=C.parts[j]; p.t+=dt;   // 골드 파티클 갱신
+    if(p.t>=p.dur){ C.parts.splice(j,1); continue; } p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=220*dt; }
+  if(C.i>=tierEff){                                       // 모든 단계 끝 — 공 사라진 채 잠깐 유지 후 상점
+    C.dispR=0; C.hold=(C.hold||0)+dt;
+    if(C.hold>0.3) endCashout();
+    return;
+  }
+  C.t += dt;
+  const f=Math.min(1, C.t/C.dur);
+  const from=C.maxR*(tierEff-C.i)/tierEff, to=C.maxR*(tierEff-(C.i+1))/tierEff;
+  C.dispR = from + (to-from)*easeInOut(f);
+  if(f>=1){
+    if(C.tier>0){                                        // 한 단계 줄 때마다 코인 1 + 골드 분출 + "또롱"
+      C.displayCoins++;
+      sfxCoin();
+      for(let n=0;n<14;n++){ const a=rand(0,6.2832), sp=rand(40,170);
+        C.parts.push({ x:W/2, y:H/2, vx:Math.cos(a)*sp*1.25, vy:Math.sin(a)*sp-45, t:0, dur:rand(0.6,1.1), r:rand(3,5.5) }); }
+    }
+    C.i++; C.t=0;
+  }
+}
+function endCashout(){
+  CASH = null;
+  if (BOT){ startGame(); return; }   // 봇이면 자동 재시작 (임시 테스트)
+  document.getElementById('shopScreen').classList.add('hidden');
+  document.getElementById('dexScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.remove('hidden');   // 메인 화면으로
+}
+function drawCashout(){
+  const c=palCur();
+  const g=ctx.createRadialGradient(W/2,H/2,0, W/2,H/2, Math.hypot(W,H)/1.5);
+  g.addColorStop(0,c.bg0); g.addColorStop(1,c.bg1);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  const C=CASH;
+  if(C.dispR>0.5){                                       // 장착 스킨 공 (색+모양 + 글로우)
+    const col=skinColor();
+    ctx.shadowColor=skinGlow(); ctx.shadowBlur=isObsidian()? C.dispR*1.2 : C.dispR*0.9;
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(W/2,H/2,C.dispR,0,6.2832); ctx.fill();
+    ctx.shadowBlur=0;
+    drawShapeDetail(W/2,H/2,C.dispR,SAVE.pShape,col);   // 스킨 모양도
+  }
+  ctx.fillStyle='#ffd34d';                               // 골드 코인 분출
+  for(const p of C.parts){ ctx.globalAlpha=Math.max(0,1-p.t/p.dur);
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.2832); ctx.fill(); }
+  ctx.globalAlpha=1;
+  ctx.fillStyle='#ffd34d'; ctx.font='700 26px ui-monospace, monospace'; ctx.textAlign='center';
+  ctx.fillText('◎ '+C.displayCoins, W/2, 58);
+  ctx.textAlign='left';
+}
+let gachaSpinning = false;
+// kind: pColor/pShape(주인공) · fColor/fShape(쪼꼬미) — 분리 뽑기, 미보유만(중복 없음)
+const BG_TINT = { void:'#050507', deep:'#0a0a14', cosmos:'#3a5aa0', amethyst:'#7a3aaa', nebula:'#6a3aae', abyss:'#1a6e6a', mist:'#8a93a0', aurora:'#46d29c', particle:'#c9a86a' };
+const GACHA_MAP = {
+  pColor:{pool:SKINS,o:'pColors',e:'pColor',color:true},
+  pShape:{pool:SHAPES,o:'pShapes',e:'pShape',color:false},
+  fColor:{pool:SKINS,o:'fColors',e:'fColor',color:true},
+  fShape:{pool:FOOD_SHAPES,o:'fShapes',e:'fShape',color:false},
+  bg:{pool:BGS,o:'bgs',e:'bg',color:false},
+};
+function gacha(kind){
+  if (gachaSpinning) return;
+  const res = document.getElementById('gachaResult');
+  const m = GACHA_MAP[kind]; if(!m) return;
+  const isColor = m.color, pool0 = m.pool, oKey = m.o, eKey = m.e;
+  if (SAVE.coins < GACHA_COST){ res.innerHTML = '<span style="opacity:.6">코인 부족</span>'; return; }
+  const remaining = pool0.filter(s=>s.rarity!=='base' && !SAVE[oKey].includes(s.id));
+  if (remaining.length===0){ res.innerHTML = '<span style="opacity:.6">전부 보유 중</span>'; return; }
+  SAVE.coins -= GACHA_COST;
+  const roll = Math.random()*100;
+  const rar = roll < RARITY.epic.w ? 'epic' : (roll < RARITY.epic.w + RARITY.rare.w ? 'rare' : 'common');
+  let pool = remaining.filter(s=>s.rarity===rar);
+  if (pool.length===0) pool = remaining;
+  const won = pool[Math.floor(Math.random()*pool.length)];
+  SAVE[oKey].push(won.id); SAVE[eKey] = won.id;   // 항상 미보유 → 중복 없음, 자동 장착
+  saveGame();
+  refreshShop(); refreshDex();
+  // ── 캡슐 연출(물방울 갈라짐은 2단계 폴리시) ──
+  gachaSpinning = true;
+  const ball = document.getElementById('gachaBtn');
+  const out = ball.querySelector('.outBall');
+  const cost = document.querySelector('.gachaCost');
+  ball.classList.remove('popped'); res.innerHTML = '';
+  ball.classList.add('mixing');
+  if(cost) cost.style.opacity='0';
+  const isRb = isColor && won.color==='rainbow';
+  const fc = kind==='bg' ? (BG_TINT[won.id]||'#888') : (isColor ? (isRb ? '#ff8aa8' : won.color) : '#ffffff');
+  setTimeout(()=>{
+    ball.classList.remove('mixing');
+    out.style.background = fc; out.style.color = fc;
+    out.classList.toggle('rainbowSkin', isRb);
+    ball.classList.add('popped');
+    gachaSpinning = false;
+    setTimeout(()=>{ if(!gachaSpinning){ ball.classList.remove('popped'); if(cost) cost.style.opacity=''; } }, 1600);
+  }, 1100);
+}
+let dexTarget = 'p';     // 도감 대상: 주인공(p) / 쪼꼬미(f)
+let dexSub = 'Color';    // 색 / 모양
+let shopTarget = 'p';    // 상점 대상: 주인공 / 쪼꼬미
+let dexView = 'targets';   // 도감 화면: 대상 선택 / 색·모양 고르기
+function setDexTab(s){ dexSub = s; refreshDex(); }
+function openDexTargets(){   // 대상 선택 화면으로
+  dexView = 'targets';
+  document.getElementById('dexTargets').classList.remove('hidden');
+  document.getElementById('dexItems').classList.add('hidden');
+}
+function enterDexTarget(t){   // 대상 안으로 들어가 색/모양 고르기
+  dexTarget = t; dexView = 'items'; dexSub = 'Color';
+  document.getElementById('dexTargets').classList.add('hidden');
+  document.getElementById('dexItems').classList.remove('hidden');
+  refreshDex();
+}
+function setShopTarget(t){ shopTarget = t;
+  document.getElementById('stPlayer').classList.toggle('on',t==='p');
+  document.getElementById('stFood').classList.toggle('on',t==='f');
+  document.getElementById('stBg').classList.toggle('on',t==='b');
+  document.getElementById('pullShape').style.display = (t==='b') ? 'none' : '';   // 배경은 색/모양 없음
+}
+let _bgIcons={};
+function bgIconMini(id){   // 실제 플레이 화면을 그대로 축소한 미리보기 — 밝기·색·구도·별크기까지 동일(결정적·캐시)
+  if(!_bgIcons[id]){
+    const RW=canvas.width||820, RH=canvas.height||900;              // 실제 화면 해상도로 렌더 → 별·입자 비율 동일
+    const off=document.createElement('canvas'); off.width=RW; off.height=RH; const og=off.getContext('2d');
+    const rCtx=ctx, rW=W, rH=H, rS=SMIN, rBg=SAVE.bg, rT=S.time;
+    ctx=og; W=RW; H=RH; SMIN=Math.min(W,H); SAVE.bg=id; S.time=0;
+    drawBackground();
+    ctx=rCtx; W=rW; H=rH; SMIN=rS; SAVE.bg=rBg; S.time=rT;
+    const c=document.createElement('canvas'); c.width=c.height=30;
+    const cg=c.getContext('2d'); cg.imageSmoothingEnabled=true; cg.drawImage(off,0,0,RW,RH,0,0,30,30);   // 화면 전체를 축소
+    _bgIcons[id]=c;
+  }
+  const out=document.createElement('canvas'); out.width=out.height=30; const g=out.getContext('2d');
+  g.save(); g.beginPath(); g.arc(15,15,14,0,6.2832); g.clip(); g.drawImage(_bgIcons[id],0,0); g.restore();   // 원형 크롭
+  return out;
+}
+// 메인 시작 공 — 장착 색+모양을 캔버스에 게임처럼 렌더
+function drawStartBall(){
+  const cv=document.getElementById('startBallCv'); if(!cv) return;
+  const realCtx=ctx, rW=W, rH=H, rS=SMIN;
+  ctx=cv.getContext('2d'); W=cv.width; H=cv.height; SMIN=Math.min(W,H);
+  ctx.clearRect(0,0,W,H);
+  const col=tintOf(SAVE.pColor), cx=W/2, cy=H/2, r=W*0.26;
+  ctx.fillStyle=col; ctx.shadowColor=skinGlow(); ctx.shadowBlur=isObsidian()? r*1.4 : r*0.9;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,6.2832); ctx.fill(); ctx.shadowBlur=0;
+  drawShapeDetail(cx,cy,r,SAVE.pShape,col);
+  ctx=realCtx; W=rW; H=rH; SMIN=rS;
+}
+function updateMainBall(){ drawStartBall(); }
+function refreshShop(){
+  document.getElementById('coins').textContent = '◎ ' + SAVE.coins;
+}
+// 도감 — 대상(주인공/쪼꼬미) × 색/모양, 미획득 ?(수집욕), 클릭=장착
+function refreshDex(){
+  const tc=document.getElementById('tabColor'), tsh=document.getElementById('tabShape');
+  if(tc&&tsh){ tc.classList.toggle('on',dexSub==='Color'); tsh.classList.toggle('on',dexSub==='Shape'); }
+  const dp=document.getElementById('dtPlayer'), df=document.getElementById('dtFood'), dbg=document.getElementById('dtBg');
+  if(dp){ dp.classList.toggle('on',dexTarget==='p'); df.classList.toggle('on',dexTarget==='f'); dbg.classList.toggle('on',dexTarget==='b'); }
+  const isBg = dexTarget==='b';
+  document.getElementById('dexSubTabs').style.display = isBg ? 'none' : '';   // 배경은 색/모양 없음
+  document.getElementById('dexPreview').style.display = isBg ? 'none' : '';    // 배경은 미리보기 패널 없음 — 고르면 바로 실제 플레이에 적용
+  const grid = document.getElementById('skinGrid'); grid.innerHTML = '';
+  const isColor = !isBg && dexSub==='Color';
+  const pool = isBg ? BGS : (isColor ? SKINS : (dexTarget==='p' ? SHAPES : FOOD_SHAPES));
+  const oKey = isBg ? 'bgs' : dexTarget + (isColor?'Colors':'Shapes');
+  const eKey = isBg ? 'bg'  : dexTarget + (isColor?'Color':'Shape');
+  const eq = SAVE[eKey];
+  for (const s of pool){
+    const owned = SAVE[oKey].includes(s.id);
+    const d = document.createElement('div');
+    d.className = 'skin' + (owned ? '' : ' locked') + (eq===s.id ? ' eq' : '');
+    if (owned){
+      if(isBg){ d.appendChild(bgIconMini(s.id)); }
+      else if(isColor){
+        if(s.color==='rainbow'){ d.style.background='#ff8aa8'; d.classList.add('rainbowSkin'); }
+        else d.style.background = s.color;
+      } else {
+        d.appendChild(dexTarget==='p' ? shapeIcon(s.id) : foodIconMini(s.id));
+      }
+      d.onclick = ()=>{ SAVE[eKey] = s.id; saveGame(); refreshDex(); };
+    } else {
+      d.textContent = '?';
+    }
+    grid.appendChild(d);
+  }
+  updateMainBall();
+}
+// 쪼꼬미 형태 미니 아이콘 (도감용)
+function foodIconMini(shapeId){
+  const cv=document.createElement('canvas'); cv.width=cv.height=30; const g=cv.getContext('2d');
+  g.fillStyle='#fff'; g.translate(15,15); g.beginPath();
+  if(shapeId==='star'){ for(let i=0;i<10;i++){const a=i/10*6.2832-1.57,rad=(i%2?4:10),px=Math.cos(a)*rad,py=Math.sin(a)*rad; i?g.lineTo(px,py):g.moveTo(px,py);} g.closePath(); }
+  else if(shapeId==='tri'){ for(let i=0;i<3;i++){const a=i/3*6.2832-1.57,px=Math.cos(a)*11,py=Math.sin(a)*11; i?g.lineTo(px,py):g.moveTo(px,py);} g.closePath(); }
+  else if(shapeId==='diamond'){ g.moveTo(0,-11);g.lineTo(8,0);g.lineTo(0,11);g.lineTo(-8,0);g.closePath(); }
+  else if(shapeId==='spore'){ g.ellipse(0,0,6,11,0,0,6.2832); }
+  else if(shapeId==='cross'){ g.rect(-3.5,-11,7,22); g.rect(-11,-3.5,22,7); }
+  else { g.arc(0,0,9,0,6.2832); }
+  g.fill(); return cv;
+}
+// 쪼꼬미(먹이) 형태 그리기 — 작은 실루엣 (현재 ctx.fillStyle/shadow 설정 사용)
+function drawFoodShape(x,y,r,shape,ph){
+  if(shape==='round'){ ctx.beginPath(); ctx.arc(x,y,r,0,6.2832); ctx.fill(); return; }
+  ctx.save(); ctx.translate(x,y); ctx.rotate(ph||0);
+  ctx.beginPath();
+  if(shape==='star'){ for(let i=0;i<10;i++){ const a=i/10*6.2832-1.57, rad=(i%2?r*0.45:r*1.15); const px=Math.cos(a)*rad,py=Math.sin(a)*rad; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+  else if(shape==='tri'){ for(let i=0;i<3;i++){ const a=i/3*6.2832-1.57, px=Math.cos(a)*r*1.25,py=Math.sin(a)*r*1.25; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+  else if(shape==='diamond'){ ctx.moveTo(0,-r*1.3); ctx.lineTo(r*0.95,0); ctx.lineTo(0,r*1.3); ctx.lineTo(-r*0.95,0); ctx.closePath(); }
+  else if(shape==='spore'){ ctx.ellipse(0,0,r*0.7,r*1.35,0,0,6.2832); }
+  else if(shape==='cross'){ const w=r*0.42,l=r*1.3; ctx.rect(-w,-l,w*2,l*2); ctx.rect(-l,-w,l*2,w*2); }
+  else { ctx.arc(0,0,r,0,6.2832); }
+  ctx.fill(); ctx.restore();
+}
+// 모양 도감용 미니 아이콘 (흰 공 + 모양 디테일)
+function shapeIcon(shapeId){
+  const cv=document.createElement('canvas'); cv.width=cv.height=30;
+  const g=cv.getContext('2d'); const cx=15,cy=15,r=9;
+  g.fillStyle='#fff';
+  g.beginPath(); g.arc(cx,cy,r,0,6.2832); g.fill();
+  if(shapeId==='blackhole'){ g.fillStyle='#0a0a0a'; g.beginPath(); g.arc(15,15,6,0,6.2832); g.fill(); g.strokeStyle='#fff'; g.lineWidth=1.6; g.beginPath(); g.ellipse(15,15,9,3.4,0,0,6.2832); g.stroke(); g.globalAlpha=.7; g.lineWidth=1; g.beginPath(); g.arc(15,15,7.5,0,6.2832); g.stroke(); g.globalAlpha=1; }
+  else if(shapeId==='comet'){ g.strokeStyle='rgba(255,255,255,.25)'; g.lineWidth=1; g.beginPath(); g.ellipse(15,15,12,5,0,0,6.2832); g.stroke(); const grad=g.createLinearGradient(24,8,12,17); grad.addColorStop(0,'#fff'); grad.addColorStop(1,'rgba(255,255,255,0)'); g.strokeStyle=grad; g.lineWidth=3.4; g.lineCap='round'; g.beginPath(); g.moveTo(24,8); g.lineTo(13,16); g.stroke(); g.fillStyle='#fff'; g.beginPath(); g.arc(24,8,3,0,6.2832); g.fill(); }
+  else if(shapeId==='ring'){ g.strokeStyle='#fff'; g.lineWidth=1.3; g.save(); g.translate(15,15); g.rotate(-0.4); [13,10.5,8].forEach((rx,k)=>{ g.globalAlpha=.7-k*0.16; g.beginPath(); g.ellipse(0,0,rx,rx*0.35,0,0,6.2832); g.stroke(); }); g.restore(); g.globalAlpha=1; }
+  else if(shapeId==='pulse'){ g.strokeStyle='#fff'; g.globalAlpha=.55; g.lineWidth=1.3; [13,9].forEach(rr=>{g.beginPath();g.arc(15,15,rr,0,6.2832);g.stroke();}); g.globalAlpha=1; }
+  else if(shapeId==='swarm'){ g.fillStyle='#fff'; for(let i=0;i<12;i++){ const sd=i*12.9898,sx=0.7+Math.abs(Math.sin(sd))*1.0,a=sd*3.1,sr=0.9+Math.abs(Math.sin(sd*4.1))*1.4; g.globalAlpha=.85; g.beginPath();g.arc(15+Math.cos(a)*9*sx*0.62,15+Math.sin(a)*5.5*sx,sr,0,6.2832);g.fill(); } g.globalAlpha=1; }
+  return cv;
+}
+
+// ---- 입력 ----
+canvas.addEventListener('pointermove', e=>{ S.mouse.x=e.clientX; S.mouse.y=e.clientY; S.mouse.active=true; });
+canvas.addEventListener('pointerdown', e=>{ S.mouse.x=e.clientX; S.mouse.y=e.clientY; S.mouse.active=true; });
+window.addEventListener('pointerdown', ensureAudio);   // 오디오는 사용자 제스처 후 활성화
+window.addEventListener('keydown', e=>{
+  ensureAudio();
+  S.keys[e.code] = true;                                     // 물리 키(한글 IME 무관)
+  if (e.code==='KeyR' && S.over) startGame();
+  if (e.code==='Enter' && S.started && !S.over) prestige();  // 환생(판매)
+  if (e.code==='KeyM') toggleBGM();                          // BGM 끄기/켜기
+  if (e.code==='KeyB'){                                      // === BOT 토글 (임시) ===
+    BOT = !BOT;
+    document.getElementById('botTag').style.display = BOT ? 'block' : 'none';
+    if (BOT && !S.started && !CASH) startGame();
+  }
+});
+window.addEventListener('keyup', e=>{ S.keys[e.code]=false; });
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('restartBtn').onclick = startGame;
+document.getElementById('pullColor').onclick = ()=>gacha(shopTarget==='b' ? 'bg' : shopTarget+'Color');
+document.getElementById('pullShape').onclick = ()=>gacha(shopTarget+'Shape');
+document.getElementById('stPlayer').onclick = ()=>setShopTarget('p');
+document.getElementById('stFood').onclick = ()=>setShopTarget('f');
+document.getElementById('stBg').onclick = ()=>setShopTarget('b');
+document.getElementById('tabColor').onclick = ()=>setDexTab('Color');
+document.getElementById('tabShape').onclick = ()=>setDexTab('Shape');
+document.getElementById('dtPlayer').onclick = ()=>enterDexTarget('p');
+document.getElementById('dtFood').onclick = ()=>enterDexTarget('f');
+document.getElementById('dtBg').onclick = ()=>enterDexTarget('b');
+document.getElementById('prestigeBtn').onclick = prestige;
+const show = id => document.getElementById(id).classList.remove('hidden');
+const hide = id => document.getElementById(id).classList.add('hidden');
+document.getElementById('shopBtn').onclick = ()=>{      // 메인 → 상점
+  hide('startScreen'); show('shopScreen'); refreshShop();
+};
+document.getElementById('shopBackBtn').onclick = ()=>{  // 상점 → 메인 (우상단 ↻)
+  hide('shopScreen'); show('startScreen');
+};
+document.getElementById('dexBtn').onclick = ()=>{       // 메인 → 도감(대상 선택부터)
+  hide('startScreen'); show('dexScreen'); openDexTargets();
+};
+document.getElementById('dexBackBtn').onclick = ()=>{   // ↻: 색/모양 고르기 중이면 대상 선택으로, 아니면 메인으로
+  if(dexView==='items') openDexTargets();
+  else { hide('dexScreen'); show('startScreen'); }
+};
+// === TEST: 코인·전체 잠금해제 (나중 제거) ===
+SAVE.coins = 99999;
+SAVE.pColors = SKINS.map(s=>s.id);      SAVE.pShapes = SHAPES.map(s=>s.id);
+SAVE.fColors = SKINS.map(s=>s.id);      SAVE.fShapes = FOOD_SHAPES.map(s=>s.id);
+SAVE.bgs = BGS.map(s=>s.id);
+saveGame();
+refreshShop(); updateMainBall();   // 코인·메인 공 초기화
+
+// ---- 사운드 (Web Audio 절차 합성, 파일 없음) ----
+let _actx=null, _lastFoodSfx=0;
+function audioCtx(){ if(!_actx){ try{ _actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return _actx; }
+function ensureAudio(){ const a=audioCtx(); if(a && a.state==='suspended') a.resume(); startBGM(); }
+function blip(f0,f1,dur,type,vol,lp){
+  const a=audioCtx(); if(!a) return; const t=a.currentTime;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=type; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(vol,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  if(lp){ const fil=a.createBiquadFilter(); fil.type='lowpass'; fil.frequency.value=lp; o.connect(fil); fil.connect(g); }
+  else o.connect(g);
+  g.connect(a.destination); o.start(t); o.stop(t+dur+0.03);
+}
+function sfxEatFood(){   // 자주 먹음 — 은은하지만 또렷한 '틱' (BGM 위로 들리게)
+  const b = 235 + Math.random()*70;
+  blip(b, b*0.82, 0.055, 'sine', 0.06, b*2.5);
+}
+function sfxEatCell(){   // 적: 맘에 든 음식 '틱'의 크고 깊은 버전 (과한 둥~ 하강 줄임)
+  const b = 180;
+  blip(b*1.2, b*0.7, 0.13, 'sine', 0.16, b*3);
+}
+function coinTick(t0){   // 동전 한 닢 '팅' — 비조화 partial(금속 ring), 짧은 감쇠
+  const a=audioCtx(); if(!a) return;
+  const base=1700+Math.random()*1000;
+  const g=a.createGain();
+  g.gain.setValueAtTime(0.0001,t0); g.gain.linearRampToValueAtTime(0.025,t0+0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+0.28); g.connect(a.destination);
+  for(const p of [1, 2.76, 5.18]){   // 비조화비 = 금속/동전 ring
+    const o=a.createOscillator(); o.type='sine'; o.frequency.value=base*p;
+    o.connect(g); o.start(t0); o.stop(t0+0.3);
+  }
+}
+function sfxCoin(){      // 정산: 동전 촤르륵 쏟아짐 (짤랑 여러 개 빠른 시차, 차분히 작게)
+  const a=audioCtx(); if(!a) return; const t=a.currentTime;
+  const n=5+Math.floor(Math.random()*4);
+  for(let i=0;i<n;i++) coinTick(t + i*0.033 + Math.random()*0.018);
+}
+
+// ---- BGM: 차분·몽환 ambient (드론 패드 + 떠다니는 펜타토닉, 절차 합성) ----
+let bgm=null;
+function startBGM(){
+  const a=audioCtx(); if(!a || bgm) return;
+  const master=a.createGain(); master.gain.setValueAtTime(0.0001,a.currentTime);
+  master.gain.linearRampToValueAtTime(0.16, a.currentTime+3);   // 천천히 페이드인
+  master.connect(a.destination);
+  const delay=a.createDelay(); delay.delayTime.value=0.38;       // 공간감
+  const fb=a.createGain(); fb.gain.value=0.35; delay.connect(fb); fb.connect(delay); delay.connect(master);
+  // 드론 패드 (A 마이너 계열 5도 드론, 약간 디튠 → 몽환)
+  const lp=a.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1300;   // 밝게 → 신비(어두운 호러 느낌 제거)
+  const padGain=a.createGain(); padGain.gain.value=0.5; lp.connect(padGain); padGain.connect(master); padGain.connect(delay);
+  const oscs=[];
+  for(const fr of [130.81, 196.00, 261.63, 293.66]){    // C3 G3 C4 D4 (add9 open — 밝고 신비)
+    for(const det of [-4,4]){
+      const o=a.createOscillator(); o.type='sine'; o.frequency.value=fr; o.detune.value=det;
+      const g=a.createGain(); g.gain.value = (fr<210 ? 0.045 : 0.10);   // 저음(베이스) 절제, 미드 유지
+      o.connect(g); g.connect(lp); o.start(); oscs.push(o);
+    }
+  }
+  const lfo=a.createOscillator(); lfo.frequency.value=0.07;       // 숨쉬는 음량
+  const lfoG=a.createGain(); lfoG.gain.value=0.15; lfo.connect(lfoG); lfoG.connect(padGain.gain); lfo.start();   // 출렁 약하게(불안↓)
+  // 떠다니는 멜로디 (메이저 펜타토닉 — 영롱·신비)
+  const NOTES=[523.25,587.33,659.25,783.99,880.0];  // C D E G A
+  const melOut=a.createGain(); melOut.gain.value=0.6; melOut.connect(delay); melOut.connect(master);
+  const melTimer=setInterval(()=>{
+    if(!bgm) return; const t=a.currentTime;
+    const f=NOTES[Math.floor(Math.random()*NOTES.length)] * (Math.random()<0.5?1:0.5);
+    const o=a.createOscillator(); o.type='triangle'; o.frequency.value=f;
+    const g=a.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.08,t+0.7); g.gain.exponentialRampToValueAtTime(0.0001,t+2.6);
+    o.connect(g); g.connect(melOut); o.start(t); o.stop(t+2.7);
+  }, 2800);
+  bgm={ master, oscs, lfo, melTimer };
+}
+function stopBGM(){
+  if(!bgm) return; const a=audioCtx();
+  clearInterval(bgm.melTimer);
+  bgm.master.gain.linearRampToValueAtTime(0.0001, a.currentTime+0.6);
+  const at=a.currentTime+0.7;
+  bgm.oscs.forEach(o=>{ try{o.stop(at);}catch(e){} }); try{bgm.lfo.stop(at);}catch(e){}
+  bgm=null;
+}
+function toggleBGM(){ if(bgm) stopBGM(); else startBGM(); }
+
+// === AUTO-PLAY BOT (임시 테스트용 — 나중에 제거) ===
+// 위협(나보다 큰 공) 회피 우선 → 없으면 가까운 음식/먹이로 자동 이동
+function botControl(){
+  const p = S.player;
+  let threat=null, td=1e18;
+  for(const e of S.enemies){
+    if(e.r > p.r*1.05){ const d=Math.hypot(e.x-p.x, e.y-p.y); if(d<td){ td=d; threat=e; } }
+  }
+  let tx, ty;
+  if(threat && td < p.r*3.5){               // 임박한 위협만 정반대로 도망 (나머진 먹이 사냥)
+    tx = p.x + (p.x-threat.x); ty = p.y + (p.y-threat.y);
+  } else {
+    // 먹을 수 있는 적 중 '큰 것' 우선 — 많이 자람 (멀면 패널티)
+    let prey=null, best=-1;
+    for(const e of S.enemies){
+      if(e.r < p.r*0.96){
+        const d=Math.hypot(e.x-p.x, e.y-p.y);
+        if(d < p.r*16){ const score=e.r - d*0.02; if(score>best){ best=score; prey=e; } }
+      }
+    }
+    if(prey){ tx=prey.x; ty=prey.y; }
+    else {                                  // 먹이 적 없으면 가장 가까운 음식
+      let f=null, bd=1e18;
+      for(const ff of S.foods){ const d=Math.hypot(ff.x-p.x, ff.y-p.y); if(d<bd){ bd=d; f=ff; } }
+      if(f){ tx=f.x; ty=f.y; } else { tx=p.x+1; ty=p.y; }
+    }
+  }
+  const a = worldToScreen(tx, ty);
+  S.mouse.active=true; S.mouse.x=a[0]; S.mouse.y=a[1];
+}
+
+// ---- 업데이트 ----
+function update(dt){
+  if (CASH){ updateCashout(dt); return; }
+  S.time += dt;
+  S.spin += dt*0.6;
+  if (!S.started || S.over) return;
+  if (BOT) botControl();   // 자동 플레이 (임시 테스트)
+  const p = S.player;
+  const _vx0 = p.vx, _vy0 = p.vy;
+
+  // 이동: 키 입력 우선, 없으면 마우스 추종
+  let ax=0, ay=0;
+  const k = S.keys;
+  if (k['KeyW']||k['ArrowUp']) ay-=1;
+  if (k['KeyS']||k['ArrowDown']) ay+=1;
+  if (k['KeyA']||k['ArrowLeft']) ax-=1;
+  if (k['KeyD']||k['ArrowRight']) ax+=1;
+  const speed = 240; // 화면상 이동속도를 크기와 무관하게 일정 유지 (zoom 보정으로 체감 동일)
+  const accel = speed / S.zoom;
+  if (ax||ay){
+    const m = Math.hypot(ax,ay); ax/=m; ay/=m;
+    p.vx += ax*accel*dt*6; p.vy += ay*accel*dt*6;
+  } else if (S.mouse.active){
+    // 마우스 방향
+    const dx = (S.mouse.x - W/2), dy = (S.mouse.y - H/2);
+    const d = Math.hypot(dx,dy);
+    if (d > 4){
+      const f = Math.min(1, d/(SMIN*0.16));
+      p.vx += (dx/d)*accel*f*dt*6;
+      p.vy += (dy/d)*accel*f*dt*6;
+    }
+  }
+  // 마찰 & 속도 제한
+  const fr = Math.pow(0.0008, dt);
+  p.vx *= fr; p.vy *= fr;
+  const vmax = accel*1.4;
+  const vlen = Math.hypot(p.vx,p.vy);
+  if (vlen > vmax){ p.vx = p.vx/vlen*vmax; p.vy = p.vy/vlen*vmax; }
+  p.x += p.vx*dt; p.y += p.vy*dt;
+  p.ax = p.vx - _vx0; p.ay = p.vy - _vy0;   // 프레임 가속 → 물방울 출렁
+
+  if (p.hitFlash>0) p.hitFlash -= dt;
+  if (p.hitCd>0) p.hitCd -= dt;
+
+  // 음식 섭취 → 자성으로 끌어당겨 부드럽게 흡수
+  for (let i=S.foods.length-1;i>=0;i--){
+    const f = S.foods[i];
+    const dd = Math.hypot(f.x-p.x, f.y-p.y) || 1;
+    if (dd < p.r * 1.08){
+      S.absorbs.push({ x:f.x, y:f.y, r:f.r, t:0, dur:0.3 });
+      S.foods.splice(i,1);
+      sfxEatFood();
+    } else if (dd < p.r * 1.7){            // 자성: 가까운 음식만 살짝 끌려옴
+      const pull = (1 - dd/(p.r*1.7)) * dt * 7;
+      f.x += (p.x - f.x) * pull;
+      f.y += (p.y - f.y) * pull;
+    }
+  }
+
+  // 면역세포 행동 + 충돌
+  for (let i=S.enemies.length-1;i>=0;i--){
+    const e = S.enemies[i];
+    const dx=p.x-e.x, dy=p.y-e.y, dd=Math.hypot(dx,dy)||1;
+    e.ph += dt*e.wob;
+    let emax;
+    if (e.r > p.r*1.04){
+      // 위협: 추격 (느리게)
+      const es = (speed*0.4)/S.zoom;
+      e.vx += (dx/dd)*es*dt*4; e.vy += (dy/dd)*es*dt*4;
+      emax = (speed*0.55)/S.zoom;
+    } else if (e.r < p.r*0.96){
+      // 먹이: 도주 — 플레이어보다 확실히 느려 따라잡힌다
+      const es = (speed*0.36)/S.zoom;
+      e.vx -= (dx/dd)*es*dt*4; e.vy -= (dy/dd)*es*dt*4;
+      emax = (speed*0.36)/S.zoom;
+    } else {
+      // 비등: 배회
+      e.wanderA += rand(-1,1)*dt*2;
+      e.vx += Math.cos(e.wanderA)*(speed*0.2/S.zoom)*dt*4;
+      e.vy += Math.sin(e.wanderA)*(speed*0.2/S.zoom)*dt*4;
+      emax = (speed*0.3)/S.zoom;
+    }
+    const efr = Math.pow(0.02, dt);
+    e.vx*=efr; e.vy*=efr;
+    const ev = Math.hypot(e.vx, e.vy);    // 플레이어보다 느리도록 속도 상한
+    if (ev > emax){ e.vx = e.vx/ev*emax; e.vy = e.vy/ev*emax; }
+    e.x += e.vx*dt; e.y += e.vy*dt;
+
+    // 충돌 판정
+    if (e.r > p.r*1.04){
+      if (dd < e.r && p.hitCd<=0){       // 큰 세포 몸통에 닿음 → 피해
+        p.tr *= 0.82; p.r *= 0.9;
+        p.hitFlash = 0.4; p.hitCd = 0.7;
+        S.flash = Math.max(S.flash, 0.3);
+        blobImpulseAll(p, 0.22);
+        // 넉백
+        p.vx -= (dx/dd)*accel*0.8; p.vy -= (dy/dd)*accel*0.8;
+        burst(p.x,p.y, p.r*0.4, palCur().danger, 12);
+      }
+    } else if (dd < p.r + e.r*0.4){       // 작은 세포 삼킴 (닿으면 먹힘)
+      S.absorbs.push({ x:e.x, y:e.y, r:e.r*1.18, t:0, dur:0.3 });
+      S.enemies.splice(i,1);
+      sfxEatCell();
+    }
+  }
+
+  // 파티클
+  for (let i=S.parts.length-1;i>=0;i--){
+    const pt=S.parts[i];
+    pt.life -= dt; if(pt.life<=0){ S.parts.splice(i,1); continue; }
+    pt.x += pt.vx*dt; pt.y += pt.vy*dt;
+    pt.vx*=0.96; pt.vy*=0.96;
+  }
+
+  // 흡수 트윈: 빨려들어와 본체에 합쳐짐 (물방울이 물방울을 흡수)
+  for (let i=S.absorbs.length-1;i>=0;i--){
+    const a=S.absorbs[i]; a.t += dt;
+    a.x += (p.x-a.x)*Math.min(1,dt*22);
+    a.y += (p.y-a.y)*Math.min(1,dt*22);
+    if (a.t >= a.dur){
+      p.tr = Math.sqrt(p.tr*p.tr + a.r*a.r);          // 목표 크기 증가(면적 합)
+      blobImpulse(p, Math.atan2(a.y-p.y, a.x-p.x), 0.05);
+      S.absorbs.splice(i,1);
+    }
+  }
+  // 부드러운 성장(r→tr) + 물방울 정점 물리
+  p.r += (p.tr - p.r) * Math.min(1, dt*7);
+  updateBlob(p, dt);
+
+  // ---- 줌 / 세계 확장 ----
+  const sr = screenR();
+  if (!S.popping && sr > SMIN*MAX_FRAC){
+    // 확장 발동
+    S.popping = true;
+    S.zoomTarget = SMIN*TARGET_FRAC / p.r;
+    S.prevTier = S.tier;
+    S.tier++;
+    S.paletteMix = 0;
+    S.flash = 0.6;
+    showBanner('확장', 'SCALE ' + S.tier);
+  }
+  if (S.popping){
+    S.zoom += (S.zoomTarget - S.zoom) * Math.min(1, dt*4);
+    if (Math.abs(S.zoom - S.zoomTarget) < S.zoomTarget*0.01){
+      S.zoom = S.zoomTarget; S.popping = false;
+    }
+  }
+  if (S.paletteMix < 1) S.paletteMix = Math.min(1, S.paletteMix + dt*0.9);
+
+  // 사망
+  if (screenR() < SMIN*DEATH_FRAC) gameOver();
+
+  // 배너 / 플래시 감쇠
+  if (S.banner.t>0) S.banner.t -= dt;
+  if (S.flash>0) S.flash -= dt*1.6;
+
+  maintainWorld();
+  updateHUD();
+}
+
+function burst(x,y,r,color,n){
+  for(let i=0;i<n;i++){
+    const a=rand(0,6.28), sp=rand(0.5,3)*r;
+    S.parts.push({ x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, r:r*rand(0.15,0.4), life:rand(0.3,0.7), maxlife:0.7, color });
+  }
+}
+
+// ---- 물방울(blob) 물리: 외곽 정점이 스프링으로 출렁인다 ----
+function updateBlob(p, dt){
+  const pts=p.points, n=pts.length;
+  const K=72, D=11, SMOOTH=0.34;
+  // 이동 가속 → 진행 반대쪽이 아주 살짝 밀림 (원 그려도 조개 안 되게 약하게)
+  const amag=Math.hypot(p.ax,p.ay);
+  if(amag>1e-5){
+    const adir=Math.atan2(p.ay,p.ax);
+    for(let i=0;i<n;i++){
+      const ang=(i/n)*6.2832;
+      pts[i].v += -Math.cos(ang-adir)*(amag/p.r)*0.6;   // 크기로 정규화 — 커져도 변형 비율 일정(조개 방지)
+    }
+  }
+  // 스프링 복원
+  for(let i=0;i<n;i++){
+    const pt=pts[i];
+    pt.v += (-K*pt.off - D*pt.v)*dt;
+  }
+  // 이웃 평활 (표면장력 느낌)
+  const o=pts.map(q=>q.off);
+  for(let i=0;i<n;i++){
+    const l=o[(i-1+n)%n], rr=o[(i+1)%n];
+    pts[i].v += ((l+rr)/2 - o[i])*SMOOTH*K*dt;
+  }
+  for(let i=0;i<n;i++){
+    let nv=pts[i].off + pts[i].v*dt;
+    if(nv>0.09)nv=0.09; if(nv<-0.07)nv=-0.07;
+    pts[i].off=nv;
+  }
+}
+function blobImpulse(p, ang, amt){   // 한 방향(흡수 지점)으로 불룩
+  const pts=p.points, n=pts.length;
+  for(let i=0;i<n;i++){
+    const d=Math.cos((i/n)*6.2832 - ang);
+    if(d>0) pts[i].v += d*d*amt*14;
+  }
+}
+function blobImpulseAll(p, amt){      // 전체 출렁(피격)
+  const n=p.points.length;
+  for(let i=0;i<n;i++) p.points[i].v += Math.sin(i*2.4)*amt*14;
+}
+// 정점들을 부드러운 닫힌 곡선으로 잇는다
+function blobPath(cx,cy,r,offFn,n){
+  const P=[];
+  for(let i=0;i<n;i++){
+    const a=(i/n)*6.2832, rr=r*(1+(offFn?offFn(i):0));
+    P.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr]);
+  }
+  ctx.beginPath();
+  ctx.moveTo((P[n-1][0]+P[0][0])/2, (P[n-1][1]+P[0][1])/2);
+  for(let i=0;i<n;i++){
+    const cur=P[i], nx=P[(i+1)%n];
+    ctx.quadraticCurveTo(cur[0],cur[1], (cur[0]+nx[0])/2, (cur[1]+nx[1])/2);
+  }
+  ctx.closePath();
+}
+function showBanner(big,sub){ S.banner={ t:2.0, big, sub }; }
+
+// 현재(전환 반영) 팔레트 색 헬퍼
+function palCur(){
+  const a = pal(S.prevTier), b = pal(S.tier), t = S.paletteMix;
+  return {
+    bg0: lerpColor(a.bg[0], b.bg[0], t),
+    bg1: lerpColor(a.bg[1], b.bg[1], t),
+    food: lerpColor(a.food, b.food, t),
+    player: lerpColor(a.player, b.player, t),
+    spike: lerpColor(a.spike, b.spike, t),
+    nucleus: lerpColor(a.nucleus, b.nucleus, t),
+    enemy: lerpColor(a.enemy, b.enemy, t),
+    danger: lerpColor(a.danger, b.danger, t),
+  };
+}
+
+// ---- 렌더 ----
+// 도감 미리보기 — 현재 장착 조합을 게임처럼 작은 캔버스에
+function drawDexPreview(){
+  const cv=document.getElementById('dexPreview'); if(!cv) return;
+  const realCtx=ctx, realW=W, realH=H, realS=SMIN;
+  ctx=cv.getContext('2d'); W=cv.width; H=cv.height; SMIN=Math.min(W,H);
+  drawBackground();              // 실제 배경과 동일하게 (미리보기 크기로)
+  if(dexTarget==='f'){           // 쪼꼬미: 먹이 몇 개
+    const col=tintOf(SAVE.fColor), fr=Math.min(W,H)*0.075; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=fr;
+    for(const p of [[W*0.4,H*0.46],[W*0.6,H*0.4],[W*0.5,H*0.62]]) drawFoodShape(p[0],p[1],fr,SAVE.fShape,0);
+    ctx.shadowBlur=0;
+  } else {                       // 주인공(또는 배경): 공 + 모양 (크게)
+    const col=tintOf(SAVE.pColor), cx=W/2, cy=H/2, r=Math.min(W,H)*0.30;
+    ctx.fillStyle=col; ctx.shadowColor=skinGlow(); ctx.shadowBlur=isObsidian()? r*1.4 : r*0.7;
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,6.2832); ctx.fill(); ctx.shadowBlur=0;
+    drawShapeDetail(cx,cy,r,SAVE.pShape,col);
+  }
+  ctx=realCtx; W=realW; H=realH; SMIN=realS;
+}
+let _bgStars=null;
+function bgStars(){            // 깊은 우주 별: 한 번만 생성·캐시, 정규화 좌표(리사이즈·미리보기 안전)
+  if(_bgStars) return _bgStars;
+  const R=Math.random, pick=()=>{ const r=R(); return r<0.72?'#ffffff':(r<0.9?'#cfe0ff':'#ffe6c8'); };
+  _bgStars=[];
+  for(const L of [
+      {n:80, sp:0.003, sz:[0.4,0.9], a:[0.12,0.32], glow:false},   // 먼 층: 많고 작고 흐림
+      {n:42, sp:0.007, sz:[0.7,1.3], a:[0.28,0.55], glow:false},   // 중간 층
+      {n:16, sp:0.013, sz:[1.1,2.0], a:[0.5,0.95],  glow:true },   // 가까운 층: 적고 크고 밝음
+    ]) for(let i=0;i<L.n;i++)
+      _bgStars.push({ x:R(), y:R(), sz:L.sz[0]+R()*(L.sz[1]-L.sz[0]), a:L.a[0]+R()*(L.a[1]-L.a[0]),
+                      sp:L.sp, tw:R()*6.2832, tws:0.4+R()*1.4, c:pick(), glow:L.glow });
+  return _bgStars;
+}
+function drawStarfield(){     // 층진 별 — 화면 제자리 고정 + 반짝임 (deep/cosmos/amethyst 공용)
+  for(const s of bgStars()){
+    const sx=s.x*W, sy=s.y*H;
+    const tw=0.55+0.45*Math.sin(S.time*s.tws+s.tw);
+    ctx.globalAlpha=s.a*tw; ctx.fillStyle=s.c;
+    if(s.glow){ ctx.shadowColor=s.c; ctx.shadowBlur=s.sz*2.5; }
+    ctx.beginPath(); ctx.arc(sx,sy,s.sz,0,6.2832); ctx.fill();
+    if(s.glow) ctx.shadowBlur=0;
+  }
+  ctx.globalAlpha=1;
+}
+function drawNebulaClouds(clouds){   // [color,fx,fy,sizeFrac,alpha] — 제자리 고정 소프트 성운
+  for(const c of clouds){
+    const gx=W*c[1], gy=H*c[2], g=ctx.createRadialGradient(gx,gy,0,gx,gy,SMIN*c[3]);
+    g.addColorStop(0,c[0]); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalAlpha=c[4]; ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+}
+function drawBackground(){   // 배경 스킨 (몽환·신비 8종)
+  const bg = SAVE.bg || 'void';
+  if(bg==='void'){ ctx.fillStyle='#000000'; ctx.fillRect(0,0,W,H); return; }
+  if(bg==='abyss'){
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#04161a'); g.addColorStop(1,'#010406');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); return;
+  }
+  if(bg==='cosmos'){           // 우주 성운(파랑/핑크) + 별밭
+    ctx.fillStyle='#03040c'; ctx.fillRect(0,0,W,H);
+    drawNebulaClouds([
+      ['#16367a',0.30,0.32,0.72,0.55],
+      ['#7a2566',0.70,0.62,0.62,0.50],
+      ['#1f5a8a',0.55,0.40,0.50,0.40],
+      ['#a83a76',0.40,0.74,0.42,0.38],
+    ]);
+    drawStarfield(); return;
+  }
+  if(bg==='amethyst'){         // 보라 성운 + 별밭
+    ctx.fillStyle='#06030e'; ctx.fillRect(0,0,W,H);
+    drawNebulaClouds([
+      ['#4a1f8e',0.34,0.36,0.72,0.55],
+      ['#8a32a8',0.68,0.58,0.62,0.50],
+      ['#2c1672',0.52,0.28,0.52,0.42],
+      ['#9a44b8',0.46,0.74,0.44,0.34],
+    ]);
+    drawStarfield(); return;
+  }
+  // 기본 검정 바탕
+  ctx.fillStyle = bg==='nebula' ? '#05030a' : (bg==='aurora' ? '#02040a' : '#000000');
+  ctx.fillRect(0,0,W,H);
+  const baseG=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.hypot(W,H)/1.5);
+  baseG.addColorStop(0,'#101012'); baseG.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=baseG; ctx.fillRect(0,0,W,H);
+  if(bg==='deep'){
+    // 멀리 있는 성간 먼지 — 깊이감 (아주 옅게, 천천히 부유)
+    for(const d of [['#16203f',0.30,0.34,0.62],['#241a3a',0.74,0.66,0.70]]){
+      const gx=W*d[1], gy=H*d[2];   // 제자리 고정
+      const g=ctx.createRadialGradient(gx,gy,0,gx,gy,SMIN*d[3]);
+      g.addColorStop(0,d[0]); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.globalAlpha=0.22; ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+    }
+    drawStarfield();   // 층진 별 — 제자리 고정 + 반짝임
+  }
+  if(bg==='nebula'){
+    const t=S.time*0.05;
+    for(const b of [['#3a1a6e',0.32,0.34],['#16504e',0.68,0.62]]){
+      const gx=W*(b[1]+Math.sin(t)*0.05), gy=H*(b[2]+Math.cos(t*1.3)*0.05);
+      const g=ctx.createRadialGradient(gx,gy,0,gx,gy,SMIN*0.65);
+      g.addColorStop(0,b[0]); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.globalAlpha=0.5; ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+    }
+  } else if(bg==='mist'){          // 연무 — 화면 곳곳 떠다니는 옅은 안개(중앙 편중 X → 플레이어 주변서도 보임)
+    const t=S.time*0.04;
+    for(const m of [[0.30,0.40,0.6,0.20],[0.70,0.56,0.55,0.18],[0.50,0.28,0.5,0.15],[0.52,0.74,0.58,0.16]]){
+      const gx=W*(m[0]+Math.sin(t+m[0]*8)*0.05), gy=H*(m[1]+Math.cos(t*1.2+m[1]*6)*0.04);
+      const g=ctx.createRadialGradient(gx,gy,0,gx,gy,SMIN*m[2]);
+      g.addColorStop(0,`rgba(140,150,166,${m[3]})`); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    }
+  } else if(bg==='aurora'){        // 오로라 — 화면 비율 기준 커튼 여러 겹(아이콘·풀스크린 동일 모양)
+    const t=S.time*0.3, cols=['rgba(70,210,150,0.16)','rgba(130,100,230,0.13)','rgba(90,190,210,0.13)'], step=Math.max(2,W/48);
+    for(let i=0;i<3;i++){ ctx.fillStyle=cols[i]; ctx.beginPath(); ctx.moveTo(0,0);
+      for(let x=0;x<=W;x+=step){ const y=H*(0.28+i*0.13) + Math.sin(x/W*6.5 + t + i*1.3)*H*0.11; ctx.lineTo(x,y); }
+      ctx.lineTo(W,0); ctx.closePath(); ctx.fill();
+    }
+  } else if(bg==='particle'){      // 입자장 — 화면 곳곳 따뜻한 광채 + 떠다니는 입자(중앙 편중 X)
+    for(const m of [[0.28,0.34,0.55,0.20],[0.72,0.58,0.5,0.18],[0.50,0.74,0.46,0.15],[0.60,0.28,0.42,0.14]]){
+      const gx=W*m[0], gy=H*m[1], g=ctx.createRadialGradient(gx,gy,0,gx,gy,SMIN*m[2]);
+      g.addColorStop(0,`rgba(126,100,64,${m[3]})`); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    }
+    for(const s of bgStars()){ if(!s.glow) continue;   // 떠다니는 따뜻한 입자(별밭 위치 재사용)
+      const tw=0.5+0.5*Math.sin(S.time*s.tws+s.tw);
+      ctx.globalAlpha=s.a*tw; ctx.fillStyle='#e6c699'; ctx.shadowColor='#e6c699'; ctx.shadowBlur=s.sz*2.2;
+      ctx.beginPath(); ctx.arc(s.x*W, s.y*H, s.sz*1.1, 0, 6.2832); ctx.fill();
+    }
+    ctx.shadowBlur=0; ctx.globalAlpha=1;
+  }
+}
+function draw(){
+  if (CASH){ drawCashout(); return; }
+  const c = palCur();
+  drawBackground();
+
+  if (!S.started) return;
+  const p = S.player;
+
+  // 부유물 (배경)
+  for (const s of S.specks){
+    const [sx,sy]=worldToScreen(s.x,s.y);
+    const r=s.r*S.zoom; if(r<0.4) continue;
+    ctx.globalAlpha=s.a; ctx.fillStyle=c.food;
+    ctx.beginPath(); ctx.arc(sx,sy,r,0,6.2832); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // 음식 (쪼꼬미 색·형태 스킨 적용)
+  const fcol=foodColorHex(), fsh=foodShape();
+  ctx.fillStyle=fcol;
+  for (const f of S.foods){
+    const [sx,sy]=worldToScreen(f.x,f.y);
+    let r=f.r*S.zoom; if(r<0.5) continue;
+    const pulse = 1+Math.sin(S.time*3+f.ph)*0.12;
+    r*=pulse;
+    ctx.shadowColor=fcol; ctx.shadowBlur=r*1.5;
+    drawFoodShape(sx,sy,r,fsh,f.ph);
+  }
+  ctx.shadowBlur=0;
+
+  // 빨려들어오는 흡수물 (본체 방향으로 늘어나며 합쳐짐 — 물방울 꼬리)
+  for(const a of S.absorbs){
+    const [sx,sy]=worldToScreen(a.x,a.y);
+    const [px,py]=worldToScreen(S.player.x, S.player.y);
+    const ang=Math.atan2(py-sy, px-sx);
+    const k=Math.min(1, a.t/a.dur);
+    const rr=Math.max(0.6, a.r*S.zoom*(1-k*0.4));
+    ctx.save(); ctx.translate(sx,sy); ctx.rotate(ang);
+    ctx.globalAlpha=1-k*0.2; ctx.fillStyle=c.food;
+    ctx.shadowColor=c.food; ctx.shadowBlur=rr*1.3;
+    ctx.beginPath(); ctx.ellipse(0,0, rr*(1+k*0.45), rr*(1-k*0.18), 0,0,6.2832); ctx.fill();
+    ctx.restore();
+  }
+  ctx.shadowBlur=0; ctx.globalAlpha=1;
+
+  // 면역세포
+  for (const e of S.enemies){
+    const [sx,sy]=worldToScreen(e.x,e.y);
+    const r=e.r*S.zoom; if(r<1) continue;
+    const danger = e.r > p.r*1.04;
+    drawCell(sx,sy,r, e.ph, danger? c.danger : c.enemy, danger);
+  }
+
+  // 플레이어 바이러스
+  drawVirus(W/2, H/2, screenR(), c, p.hitFlash>0);
+
+  // 파티클
+  for (const pt of S.parts){
+    const [sx,sy]=worldToScreen(pt.x,pt.y);
+    const r=Math.max(0.6, pt.r*S.zoom);
+    ctx.globalAlpha = Math.max(0, pt.life/pt.maxlife);
+    ctx.fillStyle=pt.color;
+    ctx.beginPath(); ctx.arc(sx,sy,r,0,6.2832); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // 화면 플래시
+  if (S.flash>0){
+    ctx.globalAlpha = Math.min(0.5, S.flash);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1;
+  }
+
+  // 비네트
+  const vg = ctx.createRadialGradient(W/2,H/2,SMIN*0.35, W/2,H/2,SMIN*0.85);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.5)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+}
+
+function drawVirus(x,y,r,c,hit){
+  const pts=S.player.points;
+  const col = hit? '#ffffff' : skinColor();
+  const shape = playerShape();
+  const n=pts.length;
+  const def=(i)=>pts[i].off + Math.sin((i/n)*12.566 + S.time*2.2)*0.045;   // 본체 블롭 변형(꿀렁임)
+  ctx.shadowColor=skinGlow(); ctx.shadowBlur=isObsidian()? r*1.4 : (hit? r*1.2 : r*0.9);
+  ctx.fillStyle=col;
+  blobPath(x,y,r,def,n); ctx.fill();
+  ctx.shadowBlur=0;
+  drawShapeDetail(x,y,r,shape,col, def, n);   // def 전달 → 디테일이 본체 모양·꿀렁임 따라감
+}
+// 모양별 디테일 오버레이 (색/공 위에) — 무채색 컨셉 유지
+function drawShapeDetail(x,y,r,shape,col, def, n){
+  ctx.save();
+  const wob=(def!=null);                                  // gameplay(블롭)일 때만 본체 추종
+  const sq=()=>{ if(wob){ const a=Math.PI/4 - S.time*1.1; ctx.translate(x,y); ctx.rotate(a); ctx.scale(1.045,0.955); ctx.rotate(-a); ctx.translate(-x,-y); } };
+  const bodyPath=()=>{ if(wob){ blobPath(x,y,r,def,n); } else { ctx.beginPath(); ctx.arc(x,y,r,0,6.2832); } };
+  if(shape==='blackhole'){    // 블랙홀: 강착원반 + 사건의지평선(본체 꿀렁임 동기) + 광자고리/렌즈아크 — 전부 본체 모양으로 클립
+    ctx.save();
+    bodyPath(); ctx.clip();                                    // 본체 실루엣으로 클립 → 어떤 원도 본체 밖으로 안 삐져나옴(급커브 노출 제거)
+    ctx.save(); ctx.translate(x,y); ctx.rotate(-0.5);          // 강착원반 — 고정 틸트(텀블링·스쿼시 X → 본체와 따로 안 놂), 미세 호흡만
+    ctx.globalAlpha=0.85; ctx.strokeStyle=col; ctx.lineWidth=r*0.14; ctx.shadowColor=col; ctx.shadowBlur=r*0.45;
+    ctx.beginPath(); ctx.ellipse(0,0,r*0.9,r*0.4*(1+Math.sin(S.time*0.6)*0.06),0,0,6.2832); ctx.stroke(); ctx.restore();
+    const eg=ctx.createRadialGradient(x,y,0,x,y,r*0.92);       // 사건의 지평선 — 본체 def 그대로 따라가는 블롭(스쿼시X → 꿀렁임 정확히 동기)
+    eg.addColorStop(0,'rgba(0,0,0,0.96)'); eg.addColorStop(0.7,'rgba(0,0,0,0.9)'); eg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=eg;
+    if(wob){ blobPath(x,y,r*0.92,def,n); } else { ctx.beginPath(); ctx.arc(x,y,r*0.92,0,6.2832); }
+    ctx.fill();
+    ctx.save(); sq();                                          // 광자 고리 + 렌즈 아크 (클립으로 본체 안에만)
+    ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=r*0.05; ctx.shadowColor=col; ctx.shadowBlur=r*0.5;
+    ctx.beginPath(); ctx.arc(x,y,r*0.7,0,6.2832); ctx.stroke();
+    ctx.globalAlpha=0.8; ctx.lineWidth=r*0.08; ctx.beginPath(); ctx.arc(x,y,r*0.86,Math.PI*1.15,Math.PI*1.85); ctx.stroke();
+    ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
+    ctx.restore();
+  } else if(shape==='comet'){        // 별똥별: 발광 궤도 트랙 + 잔해 + 3개 공전(곡선 꼬리·머리 꿀렁·뒤 가려짐)
+    const N=3, rx=r*1.7, ry=r*0.7, headR=r*0.25, arc=1.25, seg=12, m=10;
+    ctx.save(); sq();   // 발광 궤도 트랙 + 잔해(배경) — 공 위 부분은 뒤이은 재칠로 가려짐
+    ctx.globalAlpha=0.12; ctx.strokeStyle=lightenCol(col,0.5); ctx.lineWidth=r*0.022; ctx.shadowColor=col; ctx.shadowBlur=r*0.15;
+    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,6.2832); ctx.stroke(); ctx.shadowBlur=0;
+    ctx.fillStyle=lightenCol(col,0.4);
+    for(let d=0;d<12;d++){ const a=d*0.5236+S.time*0.25; ctx.globalAlpha=0.25+0.2*Math.sin(S.time*2+d);
+      ctx.beginPath(); ctx.arc(x+Math.cos(a)*rx,y+Math.sin(a)*ry,r*0.022,0,6.2832); ctx.fill(); }
+    ctx.globalAlpha=1; ctx.restore();
+    const one=(base)=>{ ctx.save(); sq();
+      const top=[], bot=[];
+      for(let s=0;s<=seg;s++){ const f=s/seg, a=base - f*arc;          // 궤도(궤적) 호를 따라 뒤로 샘플
+        const ox=x+Math.cos(a)*rx, oy=y+Math.sin(a)*ry;
+        let tx=-rx*Math.sin(a), ty=ry*Math.cos(a); const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+        const nx=ty, ny=-tx, w=headR*(1-f);
+        top.push([ox+nx*w, oy+ny*w]); bot.push([ox-nx*w, oy-ny*w]); }
+      ctx.beginPath();
+      top.forEach((p,i)=> i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+      for(let i=seg;i>=0;i--) ctx.lineTo(bot[i][0],bot[i][1]);
+      ctx.closePath();
+      const g=ctx.createLinearGradient(top[0][0],top[0][1], top[seg][0],top[seg][1]);
+      g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.globalAlpha=0.55; ctx.fillStyle=g; ctx.fill();
+      const hx=x+Math.cos(base)*rx, hy=y+Math.sin(base)*ry;     // 머리 = 살짝 꿀렁이는 작은 블롭
+      ctx.globalAlpha=0.98; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=r*0.5;
+      blobPath(hx,hy,headR,(i)=>Math.sin((i/m)*12.566 + S.time*2.6 + base*3)*0.09, m); ctx.fill(); ctx.shadowBlur=0;
+      ctx.restore();
+    };
+    for(let k=0;k<N;k++){ const base=S.time*1.0+k*(6.2832/N); if(Math.sin(base)<0) one(base); }   // 뒤(상단) 먼저
+    ctx.globalAlpha=1; ctx.fillStyle=col; bodyPath(); ctx.fill();   // 본체 모양 그대로 다시 칠해 뒤 별똥별 가림
+    for(let k=0;k<N;k++){ const base=S.time*1.0+k*(6.2832/N); if(Math.sin(base)>=0) one(base); }   // 앞(하단) 공 위에
+    ctx.globalAlpha=1;
+  } else if(shape==='ring'){         // 고리(토성) — 여러 겹 밴드, 자기 자리서 살짝 움직임
+    ctx.save(); sq(); ctx.translate(x,y); ctx.rotate(-0.4 + Math.sin(S.time*0.4)*0.05);
+    ctx.strokeStyle=col; ctx.shadowColor=col; ctx.shadowBlur=r*0.22;
+    [[1.66,0.55,0.075,0.5],[1.46,0.485,0.06,0.62],[1.28,0.425,0.045,0.42],[1.12,0.37,0.03,0.3]].forEach((b,k)=>{
+      const w=1+Math.sin(S.time*0.7+k*1.3)*0.018;   // 밴드별 살짝 숨쉬기(자기 자리)
+      ctx.globalAlpha=b[3]; ctx.lineWidth=r*b[2];
+      ctx.beginPath(); ctx.ellipse(0,0,r*b[0]*w,r*b[1]*w,0,0,6.2832); ctx.stroke(); });
+    ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
+  } else if(shape==='pulse'){        // 음파
+    ctx.save(); sq(); ctx.strokeStyle=col; ctx.lineWidth=r*0.05; ctx.shadowColor=col; ctx.shadowBlur=r*0.15;
+    for(let i=0;i<3;i++){ const t=((S.time*0.6)+i/3)%1; ctx.globalAlpha=0.6*(1-t); ctx.beginPath(); ctx.arc(x,y,r*(0.6+t*0.95),0,6.2832); ctx.stroke(); }
+    ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
+  } else if(shape==='swarm'){        // 위성무리: 크고작은 위성 여러 개 + 옅은 궤도(떠도는 느낌)
+    ctx.save(); sq();
+    for(let i=0;i<18;i++){ const sd=i*12.9898, sx2=0.75+Math.abs(Math.sin(sd))*1.2, sy2=sx2*(0.3+Math.abs(Math.cos(sd*1.7))*0.32), sp=Math.sin(sd*2.3)*0.85+(Math.sin(sd)>0?0.22:-0.22), a=S.time*sp+sd*3.1, sr=r*(0.035+Math.abs(Math.sin(sd*4.1))*0.13);
+      ctx.globalAlpha=0.07; ctx.strokeStyle=lightenCol(col,0.3); ctx.lineWidth=0.8; ctx.beginPath(); ctx.ellipse(x,y,r*sx2,r*sy2,0,0,6.2832); ctx.stroke();
+      ctx.globalAlpha=0.9; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=r*0.22;
+      ctx.beginPath(); ctx.arc(x+Math.cos(a)*r*sx2,y+Math.sin(a)*r*sy2,sr,0,6.2832); ctx.fill(); }
+    ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawCell(x,y,r,ph,color,danger){
+  // 평평한 발광 공 (유리/3D·광택 제거). 위협은 명도(색)로 구분.
+  ctx.shadowColor=color; ctx.shadowBlur=danger? r*0.5 : r*0.28;
+  ctx.globalAlpha=0.96; ctx.fillStyle=color;
+  blobPath(x,y,r, (i)=>Math.sin((i/14)*6.2832*2 + ph)*0.05, 14);
+  ctx.fill();
+  ctx.shadowBlur=0; ctx.globalAlpha=1;
+}
+
+// ---- HUD ----
+function fmt(n){
+  n = Math.max(0, n);
+  const u=['','K','M','B','T','Qa','Qi','Sx','Sp','Oc','No','Dc'];
+  let i=0; while(n>=1000 && i<u.length-1){ n/=1000; i++; }
+  return (i===0? Math.round(n) : n.toFixed(2)) + u[i];
+}
+function updateHUD(){
+  document.getElementById('sizeVal').textContent = fmt(S.player.r);
+  document.getElementById('tierVal').textContent = 'SCALE ' + S.tier;
+  // 진행바: target~max 사이 위치
+  const frac = (screenR()/SMIN - TARGET_FRAC) / (MAX_FRAC - TARGET_FRAC);
+  const fill = document.getElementById('barFill');
+  fill.style.width = Math.max(0, Math.min(1, frac))*100 + '%';
+  fill.style.background = palCur().player;
+}
+function updateBanner(){
+  const b = document.getElementById('banner');
+  if (S.banner.t > 0){
+    b.style.opacity = Math.min(1, S.banner.t);
+    b.style.color = palCur().player;
+    document.getElementById('bannerBig').textContent = S.banner.big;
+    document.getElementById('bannerSub').textContent = S.banner.sub;
+  } else b.style.opacity = 0;
+}
+
+// ---- 루프 ----
+let last = 0;
+function loop(ts){
+  const dt = last? Math.min(0.05, (ts-last)/1000) : 0;
+  last = ts;
+  update(dt);
+  draw();
+  updateBanner();
+  if(!document.getElementById('dexScreen').classList.contains('hidden') && dexView==='items' && dexTarget!=='b') drawDexPreview();   // 배경 탭은 미리보기 렌더 스킵
+  if(!document.getElementById('startScreen').classList.contains('hidden')) drawStartBall();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
